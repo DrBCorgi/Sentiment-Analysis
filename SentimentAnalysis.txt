@@ -1,0 +1,55 @@
+import pandas as pd
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoConfig
+from scipy.special import softmax
+import numpy as np
+import tkinter as tk
+from tkinter import filedialog
+
+def preprocess(text):
+    new_text = []
+    for t in text.split(" "):
+        t = '@user' if t.startswith('@') and len(t) > 1 else t
+        t = 'http' if t.startswith('http') else t
+        new_text.append(t)
+    return " ".join(new_text)
+
+def main():
+    root = tk.Tk()
+    root.withdraw()
+
+    input_csv_path = filedialog.askopenfilename(title='Select the CSV file')
+    output_csv_path = filedialog.asksaveasfilename(title='Save the results as', defaultextension=".csv")
+
+    if not input_csv_path or not output_csv_path:
+        print("File paths not provided. Exiting...")
+        return
+
+    df = pd.read_csv(input_csv_path)
+
+    MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+    tokenizer = AutoTokenizer.from_pretrained(MODEL)
+    config = AutoConfig.from_pretrained(MODEL)
+    model = AutoModelForSequenceClassification.from_pretrained(MODEL)
+
+    negative_scores, neutral_scores, positive_scores = [], [], []
+
+    for review in df['Review']:
+        text = preprocess(review)
+        encoded_input = tokenizer(text, return_tensors='pt')
+        output = model(**encoded_input)
+        scores = output[0][0].detach().numpy()
+        scores = softmax(scores)
+        
+        # Use the correct keys based on the output of config.label2id
+        negative_scores.append(scores[config.label2id['negative']])
+        neutral_scores.append(scores[config.label2id['neutral']])
+        positive_scores.append(scores[config.label2id['positive']])
+
+    df['Negative'] = negative_scores
+    df['Neutral'] = neutral_scores
+    df['Positive'] = positive_scores
+
+    df.to_csv(output_csv_path, index=False)
+
+if __name__ == "__main__":
+    main()
